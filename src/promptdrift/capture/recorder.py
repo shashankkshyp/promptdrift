@@ -2,7 +2,8 @@
 
 CaptureRecorder is the single entry point for all production capture.
 Provider integrations (OpenAI, etc.) call this same recorder.
-All exceptions are swallowed at the boundary — capture must never break the host app.
+Other capture exceptions are swallowed at the boundary; redaction warnings promoted to
+exceptions by warning filters propagate.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from promptdrift.capture.config import CaptureConfig
+from promptdrift.capture.redaction import RedactionWarning
 from promptdrift.models.capture import Interaction
 from promptdrift.storage.sqlite import (
     count_interactions,
@@ -41,8 +43,8 @@ def _interaction_fingerprint(
 class CaptureRecorder:
     """Provider-agnostic interaction recorder.
 
-    All public methods swallow exceptions so capture failures never
-    propagate to the host application.
+    Capture exceptions are swallowed except for redaction warnings promoted
+    to exceptions by warning filters.
     """
 
     def __init__(self, config: CaptureConfig | None = None) -> None:
@@ -70,7 +72,8 @@ class CaptureRecorder:
     ) -> Interaction | None:
         """Record a production interaction. Returns the Interaction or None.
 
-        This method NEVER raises. All failures are silently swallowed.
+        Other capture failures are silently swallowed. A RedactionWarning
+        promoted to an exception by warning filters propagates.
         """
         try:
             return self._record_inner(
@@ -87,6 +90,8 @@ class CaptureRecorder:
                 tags=tags,
                 variables=variables,
             )
+        except RedactionWarning:
+            raise
         except Exception:
             return None
 

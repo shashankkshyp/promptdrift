@@ -111,6 +111,24 @@ class TestCaptureRecorderBasic:
         # but must NOT raise
         assert result is None or result is not None
 
+    def test_swallows_unexpected_recorder_exceptions(self, monkeypatch):
+        recorder = CaptureRecorder(CaptureConfig(enabled=True))
+
+        def fail_recording(**_kwargs: object) -> None:
+            raise RuntimeError("capture failed")
+
+        monkeypatch.setattr(recorder, "_record_inner", fail_recording)
+
+        result = recorder.record(
+            prompt="p.txt",
+            input_text="hello",
+            output="world",
+            model="m",
+            provider="mock",
+        )
+
+        assert result is None
+
     def test_system_prompt_recorded(self, tmp_path):
         db = tmp_path / "test.db"
         recorder = CaptureRecorder(CaptureConfig(enabled=True, db_path=db))
@@ -162,6 +180,29 @@ class TestCaptureRecorderRollingCap:
 
 
 class TestCaptureRecorderRedaction:
+    def test_promoted_redaction_warning_propagates_from_record(self, tmp_path):
+        recorder = CaptureRecorder(
+            CaptureConfig(
+                enabled=True,
+                db_path=tmp_path / "test.db",
+                redact_patterns=["[invalid"],
+            )
+        )
+        original_filters = warnings.filters.copy()
+
+        with warnings.catch_warnings():
+            warnings.filterwarnings("error")
+            with pytest.raises(RedactionWarning, match="invalid redaction pattern"):
+                recorder.record(
+                    prompt="p.txt",
+                    input_text="hello",
+                    output="world",
+                    model="m",
+                    provider="mock",
+                )
+
+        assert warnings.filters == original_filters
+
     def test_email_redaction(self, tmp_path):
         db = tmp_path / "test.db"
         recorder = CaptureRecorder(
