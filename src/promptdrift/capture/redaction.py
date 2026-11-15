@@ -7,6 +7,7 @@ Custom redaction callbacks supported.
 from __future__ import annotations
 
 import re
+import warnings
 from collections.abc import Callable
 
 # Built-in redaction patterns
@@ -21,6 +22,10 @@ BUILTIN_PATTERNS = {
 }
 
 _REDACTED = "[REDACTED]"
+
+
+class RedactionWarning(UserWarning):
+    """Warning emitted when a redaction rule or callback fails."""
 
 
 def apply_redaction(
@@ -48,15 +53,19 @@ def apply_redaction(
         resolved = BUILTIN_PATTERNS.get(pattern, pattern)
         try:
             result = re.sub(resolved, _REDACTED, result)
-        except re.error:
-            # Invalid regex — skip silently to avoid breaking capture
-            pass
+        except re.error as exc:
+            warnings.warn(
+                f"Skipping invalid redaction pattern '{pattern}': {exc}",
+                RedactionWarning,
+            )
 
     if callback is not None:
         try:
             result = callback(result)
-        except Exception:
-            # Custom callback failure — skip silently
-            pass
+        except Exception as exc:
+            warnings.warn(
+                f"Redaction callback raised {type(exc).__name__}: {exc}",
+                RedactionWarning,
+            )
 
     return result
